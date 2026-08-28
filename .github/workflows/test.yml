@@ -19,6 +19,18 @@ jobs:
           pip install uv
           uv tool install git+https://github.com/metiu1/tube-assistant.git
 
-      - name: Check TubeAssistant
+      - name: Configure AI
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          mkdir -p "$HOME/.youtube-ai-agent"
+          cat > "$HOME/.youtube-ai-agent/.env" <<EOF
+          AI_SERVICE=openrouter
+          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+          OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+          IMAGE_PROVIDER=pollinations
+          EOF
+
+      - name: Check configuration
         run: |
           tube-assistant preflight
