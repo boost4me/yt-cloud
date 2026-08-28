@@ -1,0 +1,38 @@
+name: YouTube Authorization
+
+on:
+  workflow_dispatch:
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-auth-oauthlib google-api-python-client
+
+      - name: Create credentials file
+        env:
+          YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
+        run: |
+          mkdir -p "$HOME/.youtube-ai-agent"
+          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$HOME/.youtube-ai-agent/credentials.json"
+
+      - name: Start authorization
+        run: |
+          python - <<'PY'
+          import json
+          from google_auth_oauthlib.flow import InstalledAppFlow
+
+          scopes = ["https://www.googleapis.com/auth/youtube"]
+
+          flow = InstalledAppFlow.from_client_secrets_file(
+              "/home/runner/.youtube-ai-agent/credentials.json",
+              scopes
+          )
+
+          print("\nAUTHORIZATION URL:\n")
+          print(flow.authorization_url(prompt="consent")[0])
+          PY
