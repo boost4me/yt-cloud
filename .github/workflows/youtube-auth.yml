@@ -20,10 +20,9 @@ jobs:
           mkdir -p "$HOME/.youtube-ai-agent"
           printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$HOME/.youtube-ai-agent/credentials.json"
 
-      - name: Start authorization
+      - name: Generate authorization URL
         run: |
           python - <<'PY'
-          import json
           from google_auth_oauthlib.flow import InstalledAppFlow
 
           scopes = ["https://www.googleapis.com/auth/youtube"]
@@ -33,6 +32,14 @@ jobs:
               scopes
           )
 
-          print("\nAUTHORIZATION URL:\n")
-          print(flow.authorization_url(prompt="consent")[0])
+          url, state = flow.authorization_url(
+              access_type="offline",
+              prompt="consent"
+          )
+
+          print("========================================")
+          print("OPEN THIS URL IN YOUR BROWSER")
+          print("========================================")
+          print(url)
+          print("========================================")
           PY
