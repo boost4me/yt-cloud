@@ -1,0 +1,15 @@
+name: Cloud Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Test cloud machine
+        run: |
+          echo "Cloud machine is working!"
+          python --version
+          ffmpeg -version
