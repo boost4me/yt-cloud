@@ -8,8 +8,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Test cloud machine
         run: |
           echo "Cloud machine is working!"
+          echo "Python:"
           python --version
+          echo "FFmpeg:"
           ffmpeg -version
