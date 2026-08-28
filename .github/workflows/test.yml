@@ -21,4 +21,4 @@ jobs:
 
       - name: Check TubeAssistant
         run: |
-          tube-assistant --help
+          tube-assistant preflight
