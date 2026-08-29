@@ -38,7 +38,7 @@ jobs:
           cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
           AI_SERVICE=openrouter
           OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=openrouter/free
+          OPENROUTER_MODEL=qwen/qwen3-235b-a22b-2507:free
           IMAGE_PROVIDER=pollinations
           PEXELS_API_KEY=$PEXELS_API_KEY
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -52,8 +52,11 @@ jobs:
           YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: |
-          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$YOUTUBE_AI_WORKSPACE/credentials.json"
-          printf '%s' "$YOUTUBE_TOKEN_JSON" > "$YOUTUBE_AI_WORKSPACE/token.json"
+          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" \
+            > "$YOUTUBE_AI_WORKSPACE/credentials.json"
+
+          printf '%s' "$YOUTUBE_TOKEN_JSON" \
+            > "$YOUTUBE_AI_WORKSPACE/token.json"
 
       - name: Check configuration
         run: |
