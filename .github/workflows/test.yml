@@ -45,3 +45,23 @@ jobs:
       - name: Check configuration
         run: |
           tube-assistant preflight
+                - name: Get Telegram chat ID
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import urllib.request
+          import json
+
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          url = f"https://api.telegram.org/bot{token}/getUpdates"
+
+          data = json.load(urllib.request.urlopen(url))
+
+          for update in data.get("result", []):
+              message = update.get("message")
+              if message:
+                  chat = message.get("chat", {})
+                  print("CHAT_ID:", chat.get("id"))
+          PY
