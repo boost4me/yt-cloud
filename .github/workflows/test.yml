@@ -23,6 +23,11 @@ jobs:
           echo "YOUTUBE_AI_WORKSPACE=$HOME/.youtube-ai-agent" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.youtube-ai-agent"
 
+      - name: Install TubeAssistant
+        run: |
+          uv tool install --force git+https://github.com/metiu1/tube-assistant.git
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Configure TubeAssistant
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -33,7 +38,7 @@ jobs:
           cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
           AI_SERVICE=openrouter
           OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=google/gemma-4-31b-it:free
+          OPENROUTER_MODEL=openrouter/free
           IMAGE_PROVIDER=pollinations
           PEXELS_API_KEY=$PEXELS_API_KEY
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -55,9 +60,7 @@ jobs:
 
       - name: Check configuration
         run: |
-          uv tool run \
-            --from git+https://github.com/metiu1/tube-assistant.git \
-            tube-assistant preflight
+          tube-assistant preflight
 
       - name: Test OpenRouter
         env:
@@ -65,50 +68,76 @@ jobs:
         run: |
           python - <<'PY'
           import os
+          import time
           import requests
 
-          response = requests.post(
-              "https://openrouter.ai/api/v1/chat/completions",
-              headers={
-                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
-                  "Content-Type": "application/json",
-                  "HTTP-Referer": "tube-assistant",
-              },
-              json={
-                  "model": "google/gemma-4-31b-it:free",
-                  "messages": [
-                      {
-                          "role": "user",
-                          "content": "Reply with exactly: OK"
-                      }
-                  ],
-                  "max_tokens": 10,
-                  "temperature": 0
-              },
-              timeout=60,
-          )
+          api_key = os.environ["OPENROUTER_API_KEY"]
 
-          if response.status_code != 200:
-              print(f"OpenRouter HTTP {response.status_code}")
-              print(response.text[:1000])
-              raise SystemExit(1)
+          payload = {
+              "model": "openrouter/free",
+              "messages": [
+                  {
+                      "role": "user",
+                      "content": "Reply with exactly: OK"
+                  }
+              ],
+              "max_tokens": 10,
+              "temperature": 0
+          }
 
-          data = response.json()
-          content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+          headers = {
+              "Authorization": f"Bearer {api_key}",
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://github.com/boost4me/yt-cloud",
+              "X-Title": "TubeAssistant Cloud"
+          }
 
-          if not content:
-              print("OpenRouter returned no content.")
-              print(response.text[:1000])
-              raise SystemExit(1)
+          last_status = None
 
-          print("OpenRouter test: OK")
+          for attempt in range(1, 6):
+              response = requests.post(
+                  "https://openrouter.ai/api/v1/chat/completions",
+                  headers=headers,
+                  json=payload,
+                  timeout=90
+              )
+
+              last_status = response.status_code
+
+              if response.status_code == 200:
+                  data = response.json()
+                  content = (
+                      data.get("choices", [{}])[0]
+                      .get("message", {})
+                      .get("content", "")
+                  )
+
+                  if content:
+                      print("OpenRouter test: OK")
+                      print("Model used:", data.get("model", "unknown"))
+                      raise SystemExit(0)
+
+                  print("OpenRouter returned 200 but no message content.")
+                  print(response.text[:1000])
+                  raise SystemExit(1)
+
+              print(f"OpenRouter attempt {attempt}/5 returned HTTP {response.status_code}")
+
+              if response.status_code not in (408, 429, 500, 502, 503, 504):
+                  print(response.text[:1000])
+                  raise SystemExit(1)
+
+              if attempt < 5:
+                  time.sleep(attempt * 10)
+
+          print(f"OpenRouter failed after 5 attempts. Last HTTP status: {last_status}")
+          print(response.text[:1000])
+          raise SystemExit(1)
           PY
 
       - name: Generate test video
         run: |
-          uv tool run \
-            --from git+https://github.com/metiu1/tube-assistant.git \
-            tube-assistant dry-run
+          tube-assistant dry-run
 
       - name: Upload generated files
         if: success()
