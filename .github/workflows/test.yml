@@ -42,10 +42,7 @@ jobs:
           printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$HOME/.youtube-ai-agent/credentials.json"
           printf '%s' "$YOUTUBE_TOKEN_JSON" > "$HOME/.youtube-ai-agent/token.json"
 
-      - name: Check configuration
-        run: |
-          tube-assistant preflight
-                - name: Get Telegram chat ID
+      - name: Get Telegram chat ID
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
@@ -65,3 +62,7 @@ jobs:
                   chat = message.get("chat", {})
                   print("CHAT_ID:", chat.get("id"))
           PY
+
+      - name: Check configuration
+        run: |
+          tube-assistant preflight
