@@ -28,15 +28,15 @@ jobs:
         run: |
           mkdir -p "$HOME/.youtube-ai-agent"
 
-          cat > "$HOME/.youtube-ai-agent/.env" <<EOF
-          AI_SERVICE=openrouter
-          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
-          IMAGE_PROVIDER=pollinations
-          PEXELS_API_KEY=$PEXELS_API_KEY
-          TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
-          TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
-          EOF
+          {
+            echo "AI_SERVICE=openrouter"
+            echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
+            echo "OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free"
+            echo "IMAGE_PROVIDER=pollinations"
+            echo "PEXELS_API_KEY=$PEXELS_API_KEY"
+            echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
+            echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
+          } > "$HOME/.youtube-ai-agent/.env"
 
       - name: Configure YouTube authentication
         env:
@@ -51,22 +51,13 @@ jobs:
           printf '%s' "$YOUTUBE_TOKEN_JSON" \
             > "$HOME/.youtube-ai-agent/token.json"
 
-      - name: Verify Telegram configuration
+      - name: Verify secrets
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-            echo "TELEGRAM_BOT_TOKEN: PRESENT"
-          else
-            echo "TELEGRAM_BOT_TOKEN: MISSING"
-          fi
-
-          if [ -n "$TELEGRAM_CHAT_ID" ]; then
-            echo "TELEGRAM_CHAT_ID: PRESENT"
-          else
-            echo "TELEGRAM_CHAT_ID: MISSING"
-          fi
+          test -n "$TELEGRAM_BOT_TOKEN" && echo "TELEGRAM_BOT_TOKEN: PRESENT"
+          test -n "$TELEGRAM_CHAT_ID" && echo "TELEGRAM_CHAT_ID: PRESENT"
 
       - name: Check configuration
         run: |
