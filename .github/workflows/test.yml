@@ -33,7 +33,7 @@ jobs:
           cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
           AI_SERVICE=openrouter
           OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+          OPENROUTER_MODEL=google/gemma-4-31b-it:free
           IMAGE_PROVIDER=pollinations
           PEXELS_API_KEY=$PEXELS_API_KEY
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -58,6 +58,51 @@ jobs:
           uv tool run \
             --from git+https://github.com/metiu1/tube-assistant.git \
             tube-assistant preflight
+
+      - name: Test OpenRouter
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          response = requests.post(
+              "https://openrouter.ai/api/v1/chat/completions",
+              headers={
+                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "tube-assistant",
+              },
+              json={
+                  "model": "google/gemma-4-31b-it:free",
+                  "messages": [
+                      {
+                          "role": "user",
+                          "content": "Reply with exactly: OK"
+                      }
+                  ],
+                  "max_tokens": 10,
+                  "temperature": 0
+              },
+              timeout=60,
+          )
+
+          if response.status_code != 200:
+              print(f"OpenRouter HTTP {response.status_code}")
+              print(response.text[:1000])
+              raise SystemExit(1)
+
+          data = response.json()
+          content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+          if not content:
+              print("OpenRouter returned no content.")
+              print(response.text[:1000])
+              raise SystemExit(1)
+
+          print("OpenRouter test: OK")
+          PY
 
       - name: Generate test video
         run: |
