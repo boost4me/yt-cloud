@@ -17,7 +17,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install uv
-          uv tool install git+https://github.com/metiu1/tube-assistant.git
+          uv tool install --force git+https://github.com/metiu1/tube-assistant.git
+
+      - name: Set workspace
+        run: |
+          echo "YOUTUBE_AI_WORKSPACE=$HOME/.youtube-ai-agent" >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.youtube-ai-agent"
 
       - name: Configure TubeAssistant
         env:
@@ -26,32 +31,37 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          mkdir -p "$HOME/.youtube-ai-agent"
+          cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
+          AI_SERVICE=openrouter
+          OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+          OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+          IMAGE_PROVIDER=pollinations
+          PEXELS_API_KEY=$PEXELS_API_KEY
+          TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+          TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
+          EOF
 
-          {
-            echo "AI_SERVICE=openrouter"
-            echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
-            echo "OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free"
-            echo "IMAGE_PROVIDER=pollinations"
-            echo "PEXELS_API_KEY=$PEXELS_API_KEY"
-            echo "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN"
-            echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
-          } > "$HOME/.youtube-ai-agent/.env"
-
-          touch "$HOME/.youtube-ai-agent/.setup_done"
+          touch "$YOUTUBE_AI_WORKSPACE/.setup_done"
 
       - name: Configure YouTube authentication
         env:
           YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: |
-          mkdir -p "$HOME/.youtube-ai-agent"
-
           printf '%s' "$YOUTUBE_CREDENTIALS_JSON" \
-            > "$HOME/.youtube-ai-agent/credentials.json"
+            > "$YOUTUBE_AI_WORKSPACE/credentials.json"
 
           printf '%s' "$YOUTUBE_TOKEN_JSON" \
-            > "$HOME/.youtube-ai-agent/token.json"
+            > "$YOUTUBE_AI_WORKSPACE/token.json"
+
+      - name: Verify workspace
+        run: |
+          echo "Workspace: $YOUTUBE_AI_WORKSPACE"
+          echo "Files:"
+          ls -la "$YOUTUBE_AI_WORKSPACE"
+          echo ""
+          echo "Setup marker:"
+          test -f "$YOUTUBE_AI_WORKSPACE/.setup_done" && echo "PRESENT"
 
       - name: Check configuration
         run: |
@@ -61,7 +71,7 @@ jobs:
         run: |
           tube-assistant dry-run
 
-      - name: Upload generated files
+      - name: Upload generated video
         if: success()
         uses: actions/upload-artifact@v4
         with:
