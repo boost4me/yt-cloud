@@ -16,9 +16,13 @@ jobs:
       - name: Install TubeAssistant
         run: |
           python -m pip install --upgrade pip
-          pip install uv
+          python -m pip install uv
           uv tool install --force git+https://github.com/metiu1/tube-assistant.git
-          pip install git+https://github.com/metiu1/tube-assistant.git
+          python -m pip install --force-reinstall git+https://github.com/metiu1/tube-assistant.git
+
+      - name: Verify Python installation
+        run: |
+          python -c "import youtube_ai_agent; print('youtube_ai_agent OK:', youtube_ai_agent.__file__)"
 
       - name: Set workspace
         run: |
@@ -61,7 +65,9 @@ jobs:
 
       - name: Generate test video
         run: |
-          python -m youtube_ai_agent run --dry-run
+          python -m youtube_ai_agent._launcher \
+            "$YOUTUBE_AI_WORKSPACE" \
+            dry-run
 
       - name: Upload generated files
         if: success()
