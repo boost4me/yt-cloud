@@ -18,16 +18,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install uv
 
-      - name: Install TubeAssistant
-        run: |
-          uv tool install --force git+https://github.com/metiu1/tube-assistant.git
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Verify TubeAssistant
-        run: |
-          which tube-assistant
-          tube-assistant --help
-
       - name: Set workspace
         run: |
           echo "YOUTUBE_AI_WORKSPACE=$HOME/.youtube-ai-agent" >> "$GITHUB_ENV"
@@ -65,11 +55,15 @@ jobs:
 
       - name: Check configuration
         run: |
-          tube-assistant preflight
+          uv tool run \
+            --from git+https://github.com/metiu1/tube-assistant.git \
+            tube-assistant preflight
 
       - name: Generate test video
         run: |
-          tube-assistant dry-run
+          uv tool run \
+            --from git+https://github.com/metiu1/tube-assistant.git \
+            tube-assistant dry-run
 
       - name: Upload generated files
         if: success()
