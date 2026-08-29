@@ -54,15 +54,6 @@ jobs:
           printf '%s' "$YOUTUBE_TOKEN_JSON" \
             > "$YOUTUBE_AI_WORKSPACE/token.json"
 
-      - name: Verify workspace
-        run: |
-          echo "Workspace: $YOUTUBE_AI_WORKSPACE"
-          echo "Files:"
-          ls -la "$YOUTUBE_AI_WORKSPACE"
-          echo ""
-          echo "Setup marker:"
-          test -f "$YOUTUBE_AI_WORKSPACE/.setup_done" && echo "PRESENT"
-
       - name: Check configuration
         run: |
           tube-assistant preflight
@@ -71,7 +62,7 @@ jobs:
         run: |
           tube-assistant dry-run
 
-      - name: Upload generated video
+      - name: Upload generated files
         if: success()
         uses: actions/upload-artifact@v4
         with:
