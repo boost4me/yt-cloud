@@ -62,3 +62,14 @@ jobs:
       - name: Check configuration
         run: |
           tube-assistant preflight
+
+      - name: Generate test video
+        run: |
+          tube-assistant dry-run
+
+      - name: Upload generated video as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tubeassistant-test-video
+          path: /home/runner/.youtube-ai-agent/output/
+          if-no-files-found: error
