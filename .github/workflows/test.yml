@@ -51,23 +51,17 @@ jobs:
           printf '%s' "$YOUTUBE_TOKEN_JSON" \
             > "$HOME/.youtube-ai-agent/token.json"
 
-      - name: Verify secrets
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          test -n "$TELEGRAM_BOT_TOKEN" && echo "TELEGRAM_BOT_TOKEN: PRESENT"
-          test -n "$TELEGRAM_CHAT_ID" && echo "TELEGRAM_CHAT_ID: PRESENT"
-
       - name: Check configuration
         run: |
           tube-assistant preflight
 
       - name: Generate test video
         run: |
-          tube-assistant dry-run
+          export YOUTUBE_AI_WORKSPACE="$HOME/.youtube-ai-agent"
+          python -m youtube_ai_agent run --dry-run
 
       - name: Upload generated video as artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: tubeassistant-test-video
