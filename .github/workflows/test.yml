@@ -52,14 +52,119 @@ jobs:
           YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
           YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
         run: |
-          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$YOUTUBE_AI_WORKSPACE/credentials.json"
-          printf '%s' "$YOUTUBE_TOKEN_JSON" > "$YOUTUBE_AI_WORKSPACE/token.json"
+          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" \
+            > "$YOUTUBE_AI_WORKSPACE/credentials.json"
+
+          printf '%s' "$YOUTUBE_TOKEN_JSON" \
+            > "$YOUTUBE_AI_WORKSPACE/token.json"
+
+      - name: Install JSON output compatibility patch
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.tubeassistant-runtime"
+
+          cat > "$GITHUB_WORKSPACE/.tubeassistant-runtime/sitecustomize.py" <<'PY'
+          import os
+          import requests
+
+          import moduli.ai_client as ai
+
+          ORIGINAL_URL = ai.OPENROUTER_URL
+
+          def patched_openrouter(messages, max_tokens=4096):
+              api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+              if not api_key:
+                  raise RuntimeError("OPENROUTER_API_KEY missing in .env")
+
+              headers = {
+                  "Authorization": f"Bearer {api_key}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://github.com/boost4me/yt-cloud",
+                  "X-Title": "TubeAssistant Cloud",
+              }
+
+              text = "\n".join(
+                  str(m.get("content", ""))
+                  for m in messages
+                  if isinstance(m, dict)
+              ).lower()
+
+              wants_json = (
+                  "reply only with valid json" in text
+                  or "exact structure:" in text
+                  or '"title"' in text
+                  and '"description"' in text
+                  and '"script"' in text
+              )
+
+              payload = {
+                  "model": os.environ.get(
+                      "OPENROUTER_MODEL",
+                      "openrouter/free"
+                  ),
+                  "messages": messages,
+                  "max_tokens": max_tokens,
+                  "temperature": ai._temp(),
+                  "seed": ai._seed(),
+              }
+
+              if wants_json:
+                  payload["response_format"] = {
+                      "type": "json_object"
+                  }
+
+              response = requests.post(
+                  ORIGINAL_URL,
+                  headers=headers,
+                  json=payload,
+                  timeout=180,
+              )
+
+              if response.status_code == 429:
+                  raise RuntimeError(
+                      "OpenRouter rate-limited the request (HTTP 429)."
+                  )
+
+              response.raise_for_status()
+
+              data = response.json()
+              choices = data.get("choices") or []
+
+              if not choices:
+                  raise RuntimeError(
+                      f"OpenRouter returned no choices: {data}"
+                  )
+
+              message = choices[0].get("message") or {}
+              content = message.get("content")
+
+              if not content:
+                  raise RuntimeError(
+                      f"OpenRouter returned empty content: {data}"
+                  )
+
+              return content.strip()
+
+          ai._openrouter = patched_openrouter
+
+          if hasattr(ai, "_PROVIDERS"):
+              ai._PROVIDERS["openrouter"] = patched_openrouter
+
+          print(
+              "[TubeAssistant] OpenRouter JSON compatibility patch enabled",
+              flush=True,
+          )
+          PY
 
       - name: Check configuration
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.tubeassistant-runtime
         run: |
           tube-assistant preflight
 
       - name: Generate test video
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.tubeassistant-runtime
         run: |
           tube-assistant dry-run
 
