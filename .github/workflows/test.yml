@@ -38,6 +38,8 @@ jobs:
             echo "TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID"
           } > "$HOME/.youtube-ai-agent/.env"
 
+          touch "$HOME/.youtube-ai-agent/.setup_done"
+
       - name: Configure YouTube authentication
         env:
           YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
@@ -57,13 +59,12 @@ jobs:
 
       - name: Generate test video
         run: |
-          export YOUTUBE_AI_WORKSPACE="$HOME/.youtube-ai-agent"
-          python -m youtube_ai_agent run --dry-run
+          tube-assistant dry-run
 
-      - name: Upload generated video as artifact
+      - name: Upload generated files
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: tubeassistant-test-video
+          name: tubeassistant-test-output
           path: /home/runner/.youtube-ai-agent/output/
           if-no-files-found: error
