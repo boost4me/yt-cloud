@@ -8,25 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install FFmpeg
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Install UV
+      - name: Install TubeAssistant
         run: |
           python -m pip install --upgrade pip
-          python -m pip install uv
+          pip install uv
+          uv tool install --force git+https://github.com/metiu1/tube-assistant.git
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Set workspace
         run: |
           echo "YOUTUBE_AI_WORKSPACE=$HOME/.youtube-ai-agent" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.youtube-ai-agent"
-
-      - name: Install TubeAssistant
-        run: |
-          uv tool install --force git+https://github.com/metiu1/tube-assistant.git
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Configure TubeAssistant
         env:
@@ -38,7 +35,7 @@ jobs:
           cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
           AI_SERVICE=openrouter
           OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
+          OPENROUTER_MODEL=google/gemma-4-31b-it:free
           IMAGE_PROVIDER=pollinations
           PEXELS_API_KEY=$PEXELS_API_KEY
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -58,11 +55,248 @@ jobs:
           printf '%s' "$YOUTUBE_TOKEN_JSON" \
             > "$YOUTUBE_AI_WORKSPACE/token.json"
 
+      - name: Install TubeAssistant OpenRouter runtime
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.tubeassistant-runtime"
+
+          cat > "$GITHUB_WORKSPACE/.tubeassistant-runtime/sitecustomize.py" <<'PY'
+          import json
+          import os
+          import re
+          import time
+          import requests
+
+          import moduli.ai_client as ai_client
+
+          OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+          MODELS = [
+              "google/gemma-4-31b-it:free",
+              "google/gemma-4-26b-a4b-it:free",
+              "mistralai/mistral-small-3.2-24b-instruct:free",
+              "openrouter/free",
+          ]
+
+          def _extract_text(data):
+              choices = data.get("choices") or []
+
+              if not choices:
+                  return None
+
+              message = choices[0].get("message") or {}
+              content = message.get("content")
+
+              if isinstance(content, str) and content.strip():
+                  return content.strip()
+
+              return None
+
+          def _looks_like_json_request(messages):
+              text = "\n".join(
+                  str(m.get("content", ""))
+                  for m in messages
+                  if isinstance(m, dict)
+              )
+
+              lowered = text.lower()
+
+              return (
+                  "valid json" in lowered
+                  or "json object" in lowered
+                  or '"title"' in lowered
+                  or '"script"' in lowered
+                  or '"description"' in lowered
+                  or "output must be json" in lowered
+              )
+
+          def _normalise_json(text):
+              if not text:
+                  return text
+
+              text = text.strip()
+
+              if text.startswith("```"):
+                  text = re.sub(
+                      r"^```(?:json)?\s*",
+                      "",
+                      text,
+                      flags=re.IGNORECASE,
+                  )
+                  text = re.sub(r"\s*```$", "", text)
+
+              return text.strip()
+
+          def openrouter_fixed(messages, max_tokens=4096):
+              key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+              if not key:
+                  raise RuntimeError("OPENROUTER_API_KEY is missing")
+
+              is_json = _looks_like_json_request(messages)
+
+              headers = {
+                  "Authorization": f"Bearer {key}",
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://github.com/boost4me/yt-cloud",
+                  "X-Title": "TubeAssistant Cloud",
+              }
+
+              # TubeAssistant asks for only 64 tokens when generating a topic.
+              # That is too small for reasoning models because they can consume
+              # the entire generation budget before producing visible content.
+              if max_tokens <= 128:
+                  request_max_tokens = 512
+              else:
+                  request_max_tokens = max_tokens
+
+              for model in MODELS:
+
+                  payload = {
+                      "model": model,
+                      "messages": messages,
+                      "max_tokens": request_max_tokens,
+                      "temperature": 0.4,
+                      "reasoning": {
+                          "exclude": True,
+                          "effort": "minimal",
+                      },
+                      "provider": {
+                          "allow_fallbacks": True,
+                          "sort": "throughput",
+                          "require_parameters": True,
+                      },
+                  }
+
+                  if is_json:
+                      payload["response_format"] = {
+                          "type": "json_object"
+                      }
+
+                  for attempt in range(2):
+
+                      try:
+                          print(
+                              f"[OpenRouter] Trying {model} "
+                              f"(attempt {attempt + 1}/2)",
+                              flush=True,
+                          )
+
+                          response = requests.post(
+                              OPENROUTER_URL,
+                              headers=headers,
+                              json=payload,
+                              timeout=180,
+                          )
+
+                          status = response.status_code
+
+                          if status == 429:
+                              print(
+                                  f"[OpenRouter] {model}: HTTP 429 "
+                                  f"rate limited; switching model",
+                                  flush=True,
+                              )
+                              break
+
+                          if status in (408, 500, 502, 503, 504):
+                              print(
+                                  f"[OpenRouter] {model}: HTTP {status}; "
+                                  f"switching model",
+                                  flush=True,
+                              )
+                              break
+
+                          if status != 200:
+                              print(
+                                  f"[OpenRouter] {model}: HTTP {status}: "
+                                  f"{response.text[:500]}",
+                                  flush=True,
+                              )
+                              break
+
+                          data = response.json()
+                          content = _extract_text(data)
+
+                          if content:
+                              if is_json:
+                                  content = _normalise_json(content)
+
+                                  try:
+                                      json.loads(content)
+                                  except Exception:
+                                      # Do not return prose when TubeAssistant
+                                      # expects JSON. Try another model.
+                                      print(
+                                          f"[OpenRouter] {model}: "
+                                          f"invalid JSON; switching model",
+                                          flush=True,
+                                      )
+                                      break
+
+                              print(
+                                  f"[OpenRouter] Success: "
+                                  f"{data.get('model', model)}",
+                                  flush=True,
+                              )
+
+                              return content
+
+                          finish_reason = (
+                              (data.get("choices") or [{}])[0]
+                              .get("finish_reason")
+                          )
+
+                          print(
+                              f"[OpenRouter] {model}: empty content "
+                              f"(finish={finish_reason}); switching model",
+                              flush=True,
+                          )
+
+                          break
+
+                      except requests.RequestException as exc:
+                          print(
+                              f"[OpenRouter] {model}: request error: {exc}",
+                              flush=True,
+                          )
+                          break
+
+                      except Exception as exc:
+                          print(
+                              f"[OpenRouter] {model}: {exc}",
+                              flush=True,
+                          )
+                          break
+
+                  # Small pause before moving to another provider/model.
+                  time.sleep(1)
+
+              raise RuntimeError(
+                  "All configured OpenRouter models failed. "
+                  "No Ollama fallback will be attempted."
+              )
+
+          # Replace the actual OpenRouter implementation used by moduli.
+          ai_client._openrouter = openrouter_fixed
+
+          if hasattr(ai_client, "_PROVIDERS"):
+              ai_client._PROVIDERS["openrouter"] = openrouter_fixed
+
+          print(
+              "[TubeAssistant] OpenRouter runtime installed",
+              flush=True,
+          )
+          PY
+
       - name: Check configuration
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.tubeassistant-runtime
         run: |
           tube-assistant preflight
 
       - name: Generate test video
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.tubeassistant-runtime
         run: |
           tube-assistant dry-run
 
