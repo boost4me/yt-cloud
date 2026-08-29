@@ -33,6 +33,15 @@ jobs:
           PEXELS_API_KEY=$PEXELS_API_KEY
           EOF
 
+      - name: Configure YouTube authentication
+        env:
+          YOUTUBE_CREDENTIALS_JSON: ${{ secrets.YOUTUBE_CREDENTIALS_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          mkdir -p "$HOME/.youtube-ai-agent"
+          printf '%s' "$YOUTUBE_CREDENTIALS_JSON" > "$HOME/.youtube-ai-agent/credentials.json"
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > "$HOME/.youtube-ai-agent/token.json"
+
       - name: Check configuration
         run: |
           tube-assistant preflight
