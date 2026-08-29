@@ -28,6 +28,145 @@ jobs:
           uv tool install --force git+https://github.com/metiu1/tube-assistant.git
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Create OpenRouter fallback runtime
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.tubeassistant-runtime"
+
+          cat > "$GITHUB_WORKSPACE/.tubeassistant-runtime/sitecustomize.py" <<'PY'
+          import os
+          import time
+          import requests
+
+          try:
+              import moduli.ai_client as _ai
+
+              _MODELS = [
+                  "mistralai/mistral-small-3.2-24b-instruct:free",
+                  "google/gemma-4-26b-a4b-it:free",
+                  "mistralai/mistral-7b-instruct:free",
+              ]
+
+              _ORIGINAL_OPENROUTER_URL = _ai.OPENROUTER_URL
+
+              def _openrouter_with_fallback(messages, max_tokens=4096):
+                  api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+                  if not api_key:
+                      raise RuntimeError("OPENROUTER_API_KEY missing in .env")
+
+                  headers = {
+                      "Authorization": f"Bearer {api_key}",
+                      "Content-Type": "application/json",
+                      "HTTP-Referer": "https://github.com/boost4me/yt-cloud",
+                      "X-Title": "TubeAssistant Cloud",
+                  }
+
+                  last_error = None
+
+                  for model in _MODELS:
+                      for attempt in range(2):
+                          try:
+                              response = requests.post(
+                                  _ORIGINAL_OPENROUTER_URL,
+                                  headers=headers,
+                                  json={
+                                      "model": model,
+                                      "models": _MODELS,
+                                      "messages": messages,
+                                      "max_tokens": max_tokens,
+                                      "temperature": _ai._temp(),
+                                      "seed": _ai._seed(),
+                                  },
+                                  timeout=180,
+                              )
+
+                              if response.status_code == 200:
+                                  data = response.json()
+                                  choices = data.get("choices") or []
+
+                                  if choices:
+                                      message = choices[0].get("message") or {}
+                                      content = message.get("content")
+
+                                      if content:
+                                          print(
+                                              f"[OpenRouter] Success with model: "
+                                              f"{data.get('model', model)}",
+                                              flush=True,
+                                          )
+                                          return content.strip()
+
+                                  print(
+                                      f"[OpenRouter] {model} returned empty content; "
+                                      f"trying another model...",
+                                      flush=True,
+                                  )
+                                  last_error = RuntimeError(
+                                      f"{model}: empty content"
+                                  )
+                                  break
+
+                              print(
+                                  f"[OpenRouter] {model} returned HTTP "
+                                  f"{response.status_code}; trying fallback...",
+                                  flush=True,
+                              )
+
+                              last_error = RuntimeError(
+                                  f"{model}: HTTP {response.status_code}: "
+                                  f"{response.text[:500]}"
+                              )
+
+                              if response.status_code in (
+                                  400,
+                                  404,
+                                  408,
+                                  429,
+                                  500,
+                                  502,
+                                  503,
+                                  504,
+                              ):
+                                  if attempt == 0:
+                                      time.sleep(5)
+                                      continue
+                                  break
+
+                              response.raise_for_status()
+
+                          except Exception as exc:
+                              last_error = exc
+                              print(
+                                  f"[OpenRouter] {model} failed: {exc}; "
+                                  f"trying fallback...",
+                                  flush=True,
+                              )
+
+                              if attempt == 0:
+                                  time.sleep(5)
+                                  continue
+
+                              break
+
+                  raise RuntimeError(
+                      f"All OpenRouter fallback models failed: {last_error}"
+                  )
+
+              _ai._openrouter = _openrouter_with_fallback
+
+              print(
+                  "[TubeAssistant] OpenRouter multi-model fallback enabled",
+                  flush=True,
+              )
+
+          except Exception as exc:
+              print(
+                  f"[TubeAssistant] Failed to install OpenRouter fallback: {exc}",
+                  flush=True,
+              )
+              raise
+          PY
+
       - name: Configure TubeAssistant
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -38,7 +177,7 @@ jobs:
           cat > "$YOUTUBE_AI_WORKSPACE/.env" <<EOF
           AI_SERVICE=openrouter
           OPENROUTER_API_KEY=$OPENROUTER_API_KEY
-          OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
+          OPENROUTER_MODEL=mistralai/mistral-small-3.2-24b-instruct:free
           IMAGE_PROVIDER=pollinations
           PEXELS_API_KEY=$PEXELS_API_KEY
           TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
@@ -60,9 +199,12 @@ jobs:
 
       - name: Check configuration
         run: |
-          tube-assistant preflight
+          PYTHONPATH="$GITHUB_WORKSPACE/.tubeassistant-runtime" \
+            tube-assistant preflight
 
       - name: Generate test video
+        env:
+          PYTHONPATH: ${{ github.workspace }}/.tubeassistant-runtime
         run: |
           tube-assistant dry-run
 
